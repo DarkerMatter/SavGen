@@ -1,6 +1,9 @@
-const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder, REST, Routes, EmbedBuilder } = require('discord.js');
 const sqlite3 = require('sqlite3').verbose();
 const { TOKEN, GUILD_ID } = require('dotenv').config().parsed;
+
+// Role ID for permission check
+const ROLE_ID = '1317319154105061438';
 
 // Create the bot client
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.DirectMessages, GatewayIntentBits.GuildMessages] });
@@ -29,7 +32,7 @@ client.once('ready', async () => {
     const commands = [
         new SlashCommandBuilder()
             .setName('add')
-            .setDescription('Add a product key to the database (unassigned)')
+            .setDescription('Add a product key or multiple keys to the database (unassigned)')
             .addStringOption(option =>
                 option.setName('product')
                     .setDescription('The product this key is for')
@@ -56,7 +59,7 @@ client.once('ready', async () => {
             )
             .addStringOption(option =>
                 option.setName('product_key')
-                    .setDescription('The product key to add')
+                    .setDescription('The product key or keys (comma-separated) to add')
                     .setRequired(true)
             ),
         new SlashCommandBuilder()
@@ -110,43 +113,71 @@ client.once('ready', async () => {
     }
 });
 
+// Check if the user has the required role
+function hasRequiredRole(member) {
+    return member.roles.cache.has(ROLE_ID);
+}
+
 // Handle slash commands
 client.on('interactionCreate', async interaction => {
     if (!interaction.isCommand()) return;
 
-    const { commandName, options } = interaction;
+    const { commandName, options, member } = interaction;
 
     if (commandName === 'add') {
-        const product = options.getString('product');
-        const duration = options.getString('duration');
-        const productKey = options.getString('product_key');
-
-        if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        // Check for role permissions
+        if (!hasRequiredRole(member)) {
             return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
         }
 
-        db.run(`
-            INSERT INTO product_keys (product, duration, product_key, assigned_to)
-            VALUES (?, ?, ?, NULL)
-        `, [product, duration, productKey], (err) => {
-            if (err) {
-                if (err.message.includes('UNIQUE constraint')) {
-                    return interaction.reply({ content: 'This product key already exists in the database.', ephemeral: true });
-                }
-                console.error(err.message);
-                return interaction.reply({ content: 'Failed to add the product key. Please try again.', ephemeral: true });
-            }
+        const product = options.getString('product');
+        const duration = options.getString('duration');
+        const productKeys = options.getString('product_key');
 
-            interaction.reply({ content: `Successfully added the product key: \`${productKey}\` for **${product}** with duration **${duration}**.`, ephemeral: true });
-        });
+        // Handle comma-separated keys
+        const keys = productKeys.split(',').map(key => key.trim()); // Trim whitespace from each key
+
+        // Prepare to track successes and potential errors
+        let successCount = 0;
+        let duplicateCount = 0;
+        let failedKeys = [];
+
+        // Insert each key into the database
+        for (const key of keys) {
+            await new Promise(resolve => {
+                db.run(`
+                    INSERT INTO product_keys (product, duration, product_key, assigned_to)
+                    VALUES (?, ?, ?, NULL)
+                `, [product, duration, key], (err) => {
+                    if (err) {
+                        if (err.message.includes('UNIQUE constraint')) {
+                            duplicateCount++;
+                        } else {
+                            failedKeys.push(key);
+                        }
+                    } else {
+                        successCount++;
+                    }
+                    resolve();
+                });
+            });
+        }
+
+        // Generate a response
+        let response = `Successfully added **${successCount}** keys for **${product}** with duration **${duration}**.`;
+        if (duplicateCount > 0) response += `\n- **${duplicateCount}** keys were duplicates and not added.`;
+        if (failedKeys.length > 0) response += `\n- Failed to add the following keys: \`${failedKeys.join(', ')}\`.`;
+
+        interaction.reply({ content: response, ephemeral: true });
     } else if (commandName === 'issue') {
+        // Check for role permissions
+        if (!hasRequiredRole(member)) {
+            return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
+        }
+
         const product = options.getString('product');
         const duration = options.getString('duration');
         const user = options.getUser('user');
-
-        if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
-            return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
-        }
 
         db.get(`
             SELECT * FROM product_keys
@@ -173,7 +204,7 @@ client.on('interactionCreate', async interaction => {
                 }
 
                 const embed = new EmbedBuilder()
-                    .setTitle('Thank you for purchasing!')
+                    .setTitle('Product Key Issued')
                     .setColor('#ffffff')
                     .setDescription(`You have been issued a product key!\n\n**Product:** ${row.product}\n**Duration:** ${row.duration}\n**Key:** \`${row.product_key}\``)
                     .setTimestamp();
@@ -187,7 +218,8 @@ client.on('interactionCreate', async interaction => {
             });
         });
     } else if (commandName === 'inventory') {
-        if (!interaction.member.permissions.has(PermissionsBitField.Flags.Administrator)) {
+        // Check for role permissions
+        if (!hasRequiredRole(member)) {
             return interaction.reply({ content: 'You do not have permission to use this command.', ephemeral: true });
         }
 
@@ -206,10 +238,9 @@ client.on('interactionCreate', async interaction => {
                 return interaction.reply({ content: 'No unassigned keys found in the inventory.', ephemeral: true });
             }
 
-            // Create an embed to display the inventory
             const embed = new EmbedBuilder()
                 .setTitle('Unassigned Product Keys Inventory')
-                .setColor('#ffffff')
+                .setColor('#00ff00')
                 .setTimestamp();
 
             rows.forEach(row => {
