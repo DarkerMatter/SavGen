@@ -40,10 +40,12 @@ client.once('ready', async () => {
                     .addChoices(
                         { name: 'Bo6 Rage', value: 'Bo6 Rage' },
                         { name: 'Bo6 External', value: 'Bo6 External' },
+                        { name: 'Bo6 External V2', value: 'Bo6 External V2' },
                         { name: 'Bo6 UA', value: 'Bo6 UA' },
                         { name: 'Mw3 Rage', value: 'Mw3 Rage' },
                         { name: 'Mw3 AIO', value: 'Mw3 AIO' },
                         { name: 'Mw3 UA', value: 'Mw3 UA' },
+                        { name: 'Mw3 External', value: 'Mw3 External' },
                     )
             )
             .addStringOption(option =>
@@ -72,10 +74,12 @@ client.once('ready', async () => {
                     .addChoices(
                         { name: 'Bo6 Rage', value: 'Bo6 Rage' },
                         { name: 'Bo6 External', value: 'Bo6 External' },
+                        { name: 'Bo6 External V2', value: 'Bo6 External V2' },
                         { name: 'Bo6 UA', value: 'Bo6 UA' },
                         { name: 'Mw3 Rage', value: 'Mw3 Rage' },
                         { name: 'Mw3 AIO', value: 'Mw3 AIO' },
                         { name: 'Mw3 UA', value: 'Mw3 UA' },
+                        { name: 'Mw3 External', value: 'Mw3 External' },
                     )
             )
             .addStringOption(option =>
